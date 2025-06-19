@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            width: 300px;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .toggle-section {
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .mode-selector {
+            margin-bottom: 15px;
+        }
+        .mode-option {
+            margin: 8px 0;
+        }
+        .position-controls {
+            margin-top: 15px;
+        }
+        select, input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .shortcuts {
+            font-size: 12px;
+            color: #666;
+            margin-top: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .status.enabled {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disabled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Focus Input Extension</h2>
+    </div>
+    
+    <div id="status" class="status disabled">Extension Disabled</div>
+    
+    <div class="toggle-section">
+        <div class="toggle-switch">
+            <span>Enable Extension</span>
+            <label class="switch">
+                <input type="checkbox" id="extensionToggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+    
+    <div class="toggle-section">
+        <h3>Mode Selection</h3>
+        <div class="mode-selector">
+            <div class="mode-option">
+                <input type="radio" id="habitMode" name="mode" value="habit" checked>
+                <label for="habitMode">Habit Mode (Header/Popup sync)</label>
+            </div>
+            <div class="mode-option">
+                <input type="radio" id="advancedMode" name="mode" value="advanced">
+                <label for="advancedMode">Advanced Mode (AI-powered)</label>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toggle-section">
+        <h3>Position Settings</h3>
+        <div class="position-controls">
+            <label>Input Position:</label>
+            <select id="inputPosition">
+                <option value="top">Top Header</option>
+                <option value="center">Center Popup</option>
+                <option value="custom">Custom Position</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="toggle-section" id="apiSection" style="display: none;">
+        <h3>AI Settings (Advanced Mode)</h3>
+        <input type="text" id="apiKey" placeholder="Enter OpenAI API Key">
+    </div>
+    
+    <div class="shortcuts">
+        <strong>Keyboard Shortcuts:</strong><br>
+        Ctrl+Shift+F: Toggle Extension<br>
+        Ctrl+Shift+M: Switch Mode
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
