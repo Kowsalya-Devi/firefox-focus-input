@@ -1,4 +1,4 @@
-/* Floating input container */
+/* --- SHARED: Floating container (Habit Mode uses this) --- */
 .focus-input-floating {
     background: white;
     border: 2px solid #007acc;
@@ -7,9 +7,11 @@
     padding: 15px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     animation: focusInputSlideIn 0.3s ease-out;
+    max-width: 600px;
+    width: 80%;
 }
 
-/* Slide in animation */
+/* Animation for floating input */
 @keyframes focusInputSlideIn {
     from {
         opacity: 0;
@@ -20,36 +22,42 @@
         transform: translateY(0) translateX(-50%);
     }
 }
-
-/* Center positioning animation */
-.focus-input-floating[style*="translate(-50%, -50%)"] {
-    animation: focusInputFadeIn 0.3s ease-out;
+.ai-suggestions-box {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #f0f4ff;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 300px;
+    font-size: 14px;
+    z-index: 10000;
 }
 
-@keyframes focusInputFadeIn {
-    from {
-        opacity: 0;
-        transform: translate(-50%, -50%) scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: translate(-50%, -50%) scale(1);
-    }
+.ai-suggestions-box.show {
+    opacity: 1;
 }
 
-/* Input field inside floating container */
+.ai-suggestions-box.hide {
+    opacity: 0;
+}
+
+/* --- NEW: Input field inside floating box (Habit Mode only) --- */
 .focus-input-field {
     width: 100%;
     min-height: 40px;
-    overflow: hidden;
     padding: 12px 16px;
     font-size: 16px;
-    border: 1px solid #ddd;
+    border: 1px solid #ccc;
     border-radius: 6px;
     outline: none;
     font-family: inherit;
     background: white;
     box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
     transition: border-color 0.2s ease;
 }
 
@@ -58,7 +66,7 @@
     box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.1);
 }
 
-/* Close button */
+/* Close button for floating inputs */
 .focus-input-close {
     position: absolute;
     top: -10px;
@@ -84,74 +92,111 @@
     transform: scale(1.1);
 }
 
-/* AI Suggestions (Advanced Mode) */
-.focus-input-suggestions {
-    margin-top: 15px;
-    font-size: 14px;
-    color: #666;
+/* --- EXISTING: Real input box styles (Advanced Mode) --- */
+.focus-moved {
+    padding: 12px 16px;
+    font-size: 16px;
+    border: 2px solid #007acc !important;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    outline: none;
+    box-sizing: border-box;
+    font-family: inherit;
+    transition: all 0.2s ease;
+
+    width: 80%;
+    max-width: 600px;
+    resize: none; /* prevents manual resize */
+    overflow: hidden;
+    min-height: 40px;
+    line-height: 1.5;
 }
 
-.focus-input-suggestions > div {
-    background: #f8f9fa;
-    border-left: 3px solid #007acc;
+
+/* --- EXISTING: AI suggestion box (Advanced Mode) --- */
+.ai-suggestions-box {
+    position: fixed;
+    background: #eef2ff;
     padding: 12px;
-    border-radius: 4px;
+    font-size: 14px;
+    border-left: 4px solid #007acc;
+    border-radius: 6px;
+    color: #333;
+    max-width: 600px;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease-out;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
-.focus-input-suggestions small {
-    font-weight: bold;
-    color: #007acc;
-    display: block;
-    margin-bottom: 8px;
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-.focus-input-suggestions div div {
-    background: none;
-    border: none;
-    padding: 4px 0;
-    margin: 0;
-    font-size: 13px;
-}
-
-/* Responsive design */
+/* Responsive layout */
 @media (max-width: 768px) {
     .focus-input-floating {
         width: 95% !important;
-        margin: 0 10px;
         left: 10px !important;
         right: 10px !important;
         transform: none !important;
     }
-    
+
     .focus-input-floating[style*="translate(-50%, -50%)"] {
         left: 50% !important;
-        right: auto !important;
         transform: translate(-50%, -50%) !important;
         width: 90% !important;
     }
+
+    .focus-moved {
+        width: 90% !important;
+        left: 5% !important;
+        right: 5% !important;
+        transform: none !important;
+    }
+
+    .ai-suggestions-box {
+        width: 90%;
+        left: 5% !important;
+        transform: none !important;
+    }
 }
 
-/* Dark mode support */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
     .focus-input-floating {
         background: #2d3748;
         border-color: #4a90e2;
         color: white;
     }
-    
+
     .focus-input-field {
         background: #1a202c;
         border-color: #4a5568;
         color: white;
     }
-    
+
     .focus-input-field:focus {
         border-color: #4a90e2;
         box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
     }
-    
-    .focus-input-suggestions > div {
+
+    .focus-moved {
         background: #1a202c;
+        border-color: #4a90e2 !important;
+        color: white;
+    }
+
+    .ai-suggestions-box {
+        background: #2d3748;
         border-left-color: #4a90e2;
+        color: #ddd;
     }
 }

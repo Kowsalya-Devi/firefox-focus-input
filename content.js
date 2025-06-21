@@ -1,271 +1,336 @@
-// Updated content.js with fixes to prevent repeated suggestions and better advanced mode handling
 class FocusInputExtension {
     constructor() {
         this.isEnabled = true;
         this.currentMode = 'habit';
         this.inputPosition = 'top';
-        this.activeInput = null;
-        this.floatingInput = null;
         this.originalInput = null;
-        this.apiKey = '';
-        this.inputObserver = null;
+        this.apiKey = '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'; // <-- your actual key here
+        this.placeholderDiv = null;
+        this.aiSuggestionBox = null;
+        this.suggestionDebounceTimer = null;
 
         this.init();
     }
+        
+    async summarizeVisibleInputs() {
+    const inputs = [...document.querySelectorAll('textarea, input[type="text"]')]
+        .filter(el => el.offsetParent !== null && el.value.trim().length > 0);
+
+    if (inputs.length === 0) return;
+
+    const combinedText = inputs.map((el, i) => `Input ${i + 1}: ${el.value}`).join('\n');
+    const summaryDiv = document.createElement('div');
+summaryDiv.className = 'summary-box';
+summaryDiv.innerText = 'Summarizing inputs...';
+summaryDiv.style.border = '1px solid black'; // visibility
+summaryDiv.style.position = 'fixed';
+summaryDiv.style.top = '20px';
+summaryDiv.style.right = '20px';
+summaryDiv.style.left = 'auto';
+summaryDiv.style.opacity = '1';
+summaryDiv.style.transition = 'none';
+summaryDiv.style.background = '#f0f4ff';
+summaryDiv.style.padding = '10px';
+summaryDiv.style.borderRadius = '8px';
+summaryDiv.style.maxWidth = '300px';
+summaryDiv.style.fontSize = '14px';
+summaryDiv.style.zIndex = 9999;
+
+document.body.appendChild(summaryDiv);
+
+
+    try {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://your-extension-domain.com'
+            },
+            body: JSON.stringify({
+                model: 'openai/gpt-3.5-turbo',
+                messages: [
+                    {
+                        role: 'user',
+                        content: `Summarize the following inputs:\n\n${combinedText}`
+                    }
+                ],
+                max_tokens: 150,
+                temperature: 0.6
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message);
+
+        const content = data.choices[0]?.message?.content || 'No summary available.';
+        summaryDiv.innerHTML = `<strong>Summary:</strong><br>${content.replace(/\n/g, '<br>')}`;
+    } catch (err) {
+        summaryDiv.innerHTML = `<span style="color:red">Error: ${err.message}</span>`;
+    }
+}
+setupDynamicAISuggestions(input) {
+    this.addAISuggestions(input); // initial suggestion
+
+    if (this.inputListener) {
+        input.removeEventListener('input', this.inputListener);
+    }
+
+    this.inputListener = () => {
+        clearTimeout(this.suggestionDebounceTimer);
+        this.suggestionDebounceTimer = setTimeout(() => {
+            this.addAISuggestions(input);
+        }, 1000); // 500ms = 0.5s debounce delay
+    };
+
+    input.addEventListener('input', this.inputListener);
+}
 
     async init() {
         const settings = await browser.storage.local.get([
             'extensionEnabled',
             'currentMode',
-            'inputPosition',
-            'apiKey'
+            'inputPosition'
         ]);
 
         this.isEnabled = settings.extensionEnabled ?? true;
         this.currentMode = settings.currentMode || 'habit';
         this.inputPosition = settings.inputPosition || 'top';
-        this.apiKey = settings.apiKey || '';
+        // this.apiKey = settings.apiKey || '';
 
-        this.attachEventListeners();
+        this.attachListeners();
     }
 
-    attachEventListeners() {
+    attachListeners() {
         document.addEventListener('focusin', (e) => {
-            if (this.isEnabled && this.isInputElement(e.target)) {
-                this.handleInputFocus(e.target);
+            if (!this.isEnabled || !this.isInputElement(e.target)) return;
+
+            if (this.currentMode === 'advanced') {
+                this.moveRealInputToVisible(e.target);
+                this.setupDynamicAISuggestions(e.target);
+            } 
+            else if (this.currentMode === 'habit') {
+                this.createFloatingInput(e.target);
             }
         });
 
-        document.addEventListener('focusout', (e) => {
-            if (this.isEnabled && this.isInputElement(e.target)) {
-                this.handleInputBlur(e.target);
+        document.addEventListener('focusout', () => {
+            if (this.currentMode === 'advanced') {
+                setTimeout(() => this.restoreInputPosition(), 150);
             }
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.floatingInput) {
-                this.hideFloatingInput();
+            if (e.key === 'Escape') {
+                this.restoreInputPosition();
             }
         });
     }
 
-    isInputElement(element) {
-        return element.tagName === 'INPUT' ||
-               element.tagName === 'TEXTAREA' ||
-               element.contentEditable === 'true';
+    isInputElement(el) {
+        return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.contentEditable === 'true';
     }
-
-    handleInputFocus(input) {
-        if (this.originalInput === input && this.floatingInput) return;
+    moveRealInputToVisible(input) {
+        this.restoreInputPosition();
 
         this.originalInput = input;
+        this.placeholderDiv = document.createElement('div');
+        input.parentNode.insertBefore(this.placeholderDiv, input);
 
-        if (this.currentMode === 'habit') {
-            this.createFloatingInput(input);
-        } else if (this.currentMode === 'advanced') {
-            this.createFloatingInput(input);
-            this.addAISuggestions();
-        }
-    }
-
-    handleInputBlur(input) {
-        setTimeout(() => {
-            if (!this.floatingInput || !this.floatingInput.contains(document.activeElement)) {
-                this.hideFloatingInput();
-            }
-        }, 100);
-    }
-
-    createFloatingInput(originalInput) {
-        this.hideFloatingInput();
-
-        this.floatingInput = document.createElement('div');
-        this.floatingInput.className = 'focus-input-floating';
-        this.floatingInput.id = 'focusInputExtension';
-
-        const inputElement = document.createElement('textarea');
-        inputElement.className = 'focus-input-field';
-        inputElement.style.overflow = 'hidden';
-        inputElement.style.resize = 'none';
-        inputElement.rows = 1;
-        inputElement.placeholder = originalInput.placeholder || 'Type here...';
-        inputElement.value = originalInput.value;
-
-        const autoResize = () => {
-            inputElement.style.height = 'auto';
-            inputElement.style.height = inputElement.scrollHeight + 'px';
-        };
-        inputElement.addEventListener('input', autoResize);
-        autoResize();
-
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '×';
-        closeBtn.className = 'focus-input-close';
-        closeBtn.onclick = () => this.hideFloatingInput();
-
-        this.floatingInput.appendChild(closeBtn);
-        this.floatingInput.appendChild(inputElement);
-
-        this.positionFloatingInput();
-        document.body.appendChild(this.floatingInput);
-        this.syncInputs(inputElement, originalInput);
-        inputElement.focus();
-    }
-
-    positionFloatingInput() {
-        const styles = `
-            position: fixed;
-            z-index: 10000;
-            width: 80%;
-            max-width: 600px;
-        `;
+        input.classList.add('focus-moved');
+        input.style.position = 'fixed';
+        input.style.zIndex = 9999;
+        input.style.width = '80%';
+        input.style.maxWidth = '600px';
+        input.style.left = '50%';
+        input.style.transform = 'translateX(-50%)';
 
         if (this.inputPosition === 'top') {
-            this.floatingInput.style.cssText = styles + `
-                top: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-            `;
+            input.style.top = '20px';
         } else if (this.inputPosition === 'center') {
-            this.floatingInput.style.cssText = styles + `
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-            `;
-        }
-    }
-
-    syncInputs(floatingInput, originalInput) {
-        floatingInput.addEventListener('input', () => {
-            originalInput.value = floatingInput.value;
-            originalInput.dispatchEvent(new Event('input', { bubbles: true }));
-        });
-
-        const observer = new MutationObserver(() => {
-            if (floatingInput.value !== originalInput.value) {
-                floatingInput.value = originalInput.value;
-            }
-        });
-
-        observer.observe(originalInput, {
-            attributes: true,
-            attributeFilter: ['value']
-        });
-
-        this.inputObserver = observer;
-    }
-
-    hideFloatingInput() {
-        if (this.floatingInput) {
-            const suggestions = this.floatingInput.querySelector('.focus-input-suggestions');
-            if (suggestions) suggestions.remove();
-
-            if (this.originalInput) {
-                this.originalInput.focus();
-            }
-
-            if (this.inputObserver) {
-                this.inputObserver.disconnect();
-            }
-
-            this.floatingInput.remove();
-            this.floatingInput = null;
-            this.originalInput = null;
-        }
-    }
-
-    async addAISuggestions() {
-    if (!this.floatingInput || !this.originalInput) return;
-
-    const oldSuggestions = this.floatingInput.querySelector('.focus-input-suggestions');
-    if (oldSuggestions) oldSuggestions.remove();
-
-    const suggestionsDiv = document.createElement('div');
-    suggestionsDiv.className = 'focus-input-suggestions';
-    suggestionsDiv.innerHTML = `<div style="padding:10px;">Loading suggestions...</div>`;
-    this.floatingInput.appendChild(suggestionsDiv);
-
-    const { apiKey } = await browser.storage.local.get('apiKey');
-    if (!apiKey) {
-        suggestionsDiv.innerHTML = `<div style="color:red;">No API key found</div>`;
-        return;
-    }
-
-    const userInput = this.originalInput.value;
-
-    try {
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: "POST",
-           headers: {
-  'Authorization': `Bearer ${this.apiKey}`,
-  'Content-Type': 'application/json',
-  'HTTP-Referer': 'https://your-extension-domain.com',  // replace with your real site or localhost
-},
-            body: JSON.stringify({
-                model: 'openai/gpt-3.5-turbo',
-                messages: [
-                    {
-                        role: "user",
-                        content: `Give 3 helpful suggestions to improve this sentence:\n"${userInput}"`
-                    }
-                ],
-                max_tokens: 100,
-                temperature: 0.7
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error.message);
+            input.style.top = '50%';
+            input.style.transform = 'translate(-50%, -50%)';
         }
 
-        const suggestionsText = data?.choices?.[0]?.message?.content || 'No suggestions returned.';
-        const lines = suggestionsText.split('\n').filter(line => line.trim() !== '');
-        const formatted = lines.map(line => `<div>• ${line.trim()}</div>`).join('');
+        input.focus();
+        // Enable vertical expansion if input is a textarea
+    if (input.tagName === 'TEXTAREA') {
+    const autoResize = () => {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+    };
 
-        suggestionsDiv.innerHTML = `
-            <div style="padding: 10px; background: #eef2ff; border-radius: 4px; margin-top: 10px;">
-                <small><strong>AI Suggestions</strong></small>
-                ${formatted}
-            </div>
-        `;
-    } catch (err) {
-        suggestionsDiv.innerHTML = `<div style="color:red;">Error: ${err.message}</div>`;
-        console.error("AI Suggestions Error:", err);
-    }
+    input._autoResizeHandler = autoResize; // Save reference for later removal
+    input.addEventListener('input', autoResize);
+    autoResize(); // Trigger once to apply initial height
 }
 
 
+    this.summarizeVisibleInputs(); // Trigger summarization when input is focused
+    }
+
+restoreInputPosition() {
+    if (this.originalInput && this.placeholderDiv) {
+        if (this.originalInput._autoResizeHandler) {
+            this.originalInput.removeEventListener('input', this.originalInput._autoResizeHandler);
+            delete this.originalInput._autoResizeHandler;
+        }
+        if (this.originalInput && this.inputListener) {
+    this.originalInput.removeEventListener('input', this.inputListener);
+    this.inputListener = null;
+    clearTimeout(this.suggestionDebounceTimer);
+}
+
+        this.originalInput.style = '';
+        this.originalInput.classList.remove('focus-moved');
+        this.placeholderDiv.parentNode.insertBefore(this.originalInput, this.placeholderDiv);
+        this.placeholderDiv.remove();
+    }
+
+    if (this.aiSuggestionBox) {
+    this.aiSuggestionBox.classList.remove('show');
+    this.aiSuggestionBox.classList.add('hide');
+    setTimeout(() => {
+        if (this.aiSuggestionBox) {
+            this.aiSuggestionBox.remove();
+            this.aiSuggestionBox = null;
+        }
+    }, 300); // match CSS transition duration
+}
+
+
+    this.originalInput = null;
+    this.placeholderDiv = null;
+}
+
+    async addAISuggestions(input) {
+        if (!this.apiKey) return;
+
+        const suggestionDiv = document.createElement('div');
+        suggestionDiv.className = 'ai-suggestions-box';
+        suggestionDiv.style.position = 'fixed';
+        suggestionDiv.style.top = this.inputPosition === 'top' ? '80px' : 'calc(50% + 50px)';
+        suggestionDiv.style.left = '50%';
+        suggestionDiv.style.transform = 'translateX(-50%)';
+        suggestionDiv.style.background = '#f0f4ff';
+        suggestionDiv.style.padding = '10px';
+        suggestionDiv.style.borderRadius = '8px';
+        suggestionDiv.style.maxWidth = '600px';
+        suggestionDiv.style.fontSize = '14px';
+        suggestionDiv.innerText = 'Generating suggestions...';
+        document.body.appendChild(suggestionDiv);
+        this.aiSuggestionBox = suggestionDiv;
+        // Trigger fade-in using CSS class
+requestAnimationFrame(() => {
+    suggestionDiv.classList.add('show');
+});
+
+
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://your-extension-domain.com'
+                },
+                body: JSON.stringify({
+                    model: 'openai/gpt-3.5-turbo',
+                    messages: [
+                        {
+                            role: 'user',
+                            content: `Improve this sentence in terms of clarity, tone, and usefulness. Provide 3 short suggestions:\n"${input.value}"`
+                        }
+                    ],
+                    max_tokens: 100,
+                    temperature: 0.7
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+
+            const content = data.choices[0]?.message?.content || 'No suggestions.';
+            const lines = content.split('\n').filter(line => line.trim() !== '');
+            suggestionDiv.innerHTML = `<strong>AI Suggestions:</strong><br>${lines.map(l => `• ${l}`).join('<br>')}`;
+        } catch (err) {
+            suggestionDiv.innerHTML = `<span style="color:red">Error: ${err.message}</span>`;
+        }
+    }
+
+    createFloatingInput(originalInput) {
+        this.removeFloatingInput();
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'focus-input-floating';
+        wrapper.style.position = 'fixed';
+        wrapper.style.zIndex = '9999';
+        wrapper.style.maxWidth = '600px';
+        wrapper.style.width = '80%';
+        wrapper.style.left = '50%';
+        wrapper.style.transform = this.inputPosition === 'center'
+            ? 'translate(-50%, -50%)'
+            : 'translateX(-50%)';
+        wrapper.style.top = this.inputPosition === 'center' ? '50%' : '20px';
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'focus-input-field';
+        textarea.placeholder = originalInput.placeholder || '';
+        textarea.value = originalInput.value;
+        textarea.style.resize = 'none';
+        textarea.style.overflow = 'hidden';
+        textarea.rows = 1;
+
+        const autoResize = () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        };
+        textarea.addEventListener('input', autoResize);
+        autoResize();
+
+        textarea.addEventListener('input', () => {
+            originalInput.value = textarea.value;
+            originalInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.innerText = '×';
+        closeBtn.className = 'focus-input-close';
+        closeBtn.onclick = () => this.removeFloatingInput();
+
+        wrapper.appendChild(closeBtn);
+        wrapper.appendChild(textarea);
+        document.body.appendChild(wrapper);
+
+        this.floatingInput = wrapper;
+        textarea.focus();
+    }
+
+    removeFloatingInput() {
+        if (this.floatingInput) {
+            this.floatingInput.remove();
+            this.floatingInput = null;
+        }
+    }
+
     toggle(enabled) {
         this.isEnabled = enabled;
-        if (!enabled) {
-            this.hideFloatingInput();
-        } else {
-            this.attachEventListeners();
-        }
+        if (!enabled) this.restoreInputPosition();
     }
 
     changeMode(mode) {
         this.currentMode = mode;
-        if (this.floatingInput && this.originalInput) {
-            const originalInput = this.originalInput;
-            this.hideFloatingInput();
-            this.handleInputFocus(originalInput);
-        }
+        this.restoreInputPosition();
     }
 
-    changePosition(position) {
-        this.inputPosition = position;
-        if (this.floatingInput) {
-            this.positionFloatingInput();
-        }
+    changePosition(pos) {
+        this.inputPosition = pos;
     }
 }
 
 const focusInputExtension = new FocusInputExtension();
 
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((message) => {
     switch (message.action) {
         case 'toggleExtension':
             focusInputExtension.toggle(message.enabled);
