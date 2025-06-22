@@ -4,7 +4,7 @@ class FocusInputExtension {
         this.currentMode = 'habit';
         this.inputPosition = 'top';
         this.originalInput = null;
-        this.apiKey = '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'; // <-- your actual key here
+        this.apiKey = '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'; // <-- your actual key here
         this.placeholderDiv = null;
         this.aiSuggestionBox = null;
         this.suggestionDebounceTimer = null;
@@ -137,20 +137,24 @@ setupDynamicAISuggestions(input) {
         this.placeholderDiv = document.createElement('div');
         input.parentNode.insertBefore(this.placeholderDiv, input);
 
-        input.classList.add('focus-moved');
-        input.style.position = 'fixed';
-        input.style.zIndex = 9999;
-        input.style.width = '80%';
-        input.style.maxWidth = '600px';
-        input.style.left = '50%';
-        input.style.transform = 'translateX(-50%)';
+        // Save existing styles to restore later if needed
+input._originalInlineStyle = input.getAttribute('style') || '';
 
-        if (this.inputPosition === 'top') {
-            input.style.top = '20px';
-        } else if (this.inputPosition === 'center') {
-            input.style.top = '50%';
-            input.style.transform = 'translate(-50%, -50%)';
-        }
+input.classList.add('focus-moved');
+const rect = input.getBoundingClientRect();
+const computedStyle = getComputedStyle(input);
+
+Object.assign(input.style, {
+    position: 'fixed',
+    zIndex: 9999,
+    width: rect.width + 'px',
+    height: rect.height + 'px',
+    left: rect.left + 'px',
+    top: this.inputPosition === 'center' ? '50%' : '20px',
+    transform: this.inputPosition === 'center' ? 'translateY(-50%)' : 'none',
+});
+
+
 
         input.focus();
         // Enable vertical expansion if input is a textarea
@@ -181,7 +185,13 @@ restoreInputPosition() {
     clearTimeout(this.suggestionDebounceTimer);
 }
 
-        this.originalInput.style = '';
+        if (this.originalInput._originalInlineStyle !== undefined) {
+    this.originalInput.setAttribute('style', this.originalInput._originalInlineStyle);
+    delete this.originalInput._originalInlineStyle;
+} else {
+    this.originalInput.removeAttribute('style');
+}
+
         this.originalInput.classList.remove('focus-moved');
         this.placeholderDiv.parentNode.insertBefore(this.originalInput, this.placeholderDiv);
         this.placeholderDiv.remove();
@@ -260,6 +270,20 @@ requestAnimationFrame(() => {
 
     createFloatingInput(originalInput) {
         this.removeFloatingInput();
+        // Add background blur overlay
+const blurOverlay = document.createElement('div');
+blurOverlay.className = 'blur-overlay';
+blurOverlay.style.position = 'fixed';
+blurOverlay.style.top = '0';
+blurOverlay.style.left = '0';
+blurOverlay.style.width = '100%';
+blurOverlay.style.height = '100%';
+blurOverlay.style.backdropFilter = 'blur(5px)';
+blurOverlay.style.zIndex = '9998';
+blurOverlay.style.pointerEvents = 'none'; // allows clicks to go through
+document.body.appendChild(blurOverlay);
+
+this.blurOverlay = blurOverlay;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'focus-input-floating';
@@ -311,6 +335,11 @@ requestAnimationFrame(() => {
             this.floatingInput.remove();
             this.floatingInput = null;
         }
+        if (this.blurOverlay) {
+    this.blurOverlay.remove();
+    this.blurOverlay = null;
+}
+
     }
 
     toggle(enabled) {
