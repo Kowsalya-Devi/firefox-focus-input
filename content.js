@@ -11,7 +11,51 @@ class FocusInputExtension {
 
         this.init();
     }
-        
+    async applyLLMGeneratedCSS(input) {
+    try {
+        const contextMessage = `I am building a browser extension. Please give clean CSS to move the following input box to the center of the screen without breaking the layout. Use high z-index, white background, rounded border, and ensure it works for both input and textarea.`;
+
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://your-extension-domain.com'
+            },
+            body: JSON.stringify({
+                model: 'openai/gpt-3.5-turbo',
+                messages: [
+                    {
+                        role: 'user',
+                        content: contextMessage
+                    }
+                ],
+                max_tokens: 300,
+                temperature: 0.6
+            })
+        });
+
+        const data = await response.json();
+        const rawCSS = data.choices?.[0]?.message?.content || '';
+        const css = this.extractCSSBlock(rawCSS);
+
+        if (css) {
+            const styleTag = document.createElement('style');
+            styleTag.innerHTML = css;
+            document.head.appendChild(styleTag);
+            input.classList.add('focus-moved'); // to apply the generated CSS
+        }
+    } catch (error) {
+        console.error("LLM CSS generation failed:", error);
+    }
+}
+
+// Extracts CSS between ```css ... ```
+extractCSSBlock(text) {
+    const match = text.match(/```css([\s\S]*?)```/);
+    return match ? match[1].trim() : text.trim();
+}
+
     async summarizeVisibleInputs() {
     const inputs = [...document.querySelectorAll('textarea, input[type="text"]')]
         .filter(el => el.offsetParent !== null && el.value.trim().length > 0);
@@ -113,6 +157,10 @@ setupDynamicAISuggestions(input) {
                 this.createFloatingInput(e.target);
             }
         });
+        if (this.aiSuggestionBox) {
+    this.aiSuggestionBox.remove();
+    this.aiSuggestionBox = null;
+}
 
         document.addEventListener('focusout', () => {
             if (this.currentMode === 'advanced') {
@@ -130,48 +178,46 @@ setupDynamicAISuggestions(input) {
     isInputElement(el) {
         return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.contentEditable === 'true';
     }
-    moveRealInputToVisible(input) {
-        this.restoreInputPosition();
+    async moveRealInputToVisible(input) {
+    this.restoreInputPosition();
 
-        this.originalInput = input;
-        this.placeholderDiv = document.createElement('div');
-        input.parentNode.insertBefore(this.placeholderDiv, input);
+    this.originalInput = input;
+    this.placeholderDiv = document.createElement('div');
+    input.parentNode.insertBefore(this.placeholderDiv, input);
 
-        // Save existing styles to restore later if needed
-input._originalInlineStyle = input.getAttribute('style') || '';
+    input._originalInlineStyle = input.getAttribute('style') || '';
 
-input.classList.add('focus-moved');
-const rect = input.getBoundingClientRect();
-const computedStyle = getComputedStyle(input);
+    await this.applyLLMGeneratedCSS(input); // AI-generated CSS
 
-Object.assign(input.style, {
-    position: 'fixed',
-    zIndex: 9999,
-    width: rect.width + 'px',
-    height: rect.height + 'px',
-    left: rect.left + 'px',
-    top: this.inputPosition === 'center' ? '50%' : '20px',
-    transform: this.inputPosition === 'center' ? 'translateY(-50%)' : 'none',
-});
+    // ✅ Fallback enforcement (manual top alignment)
+    Object.assign(input.style, {
+        position: 'fixed',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9999,
+        backgroundColor: 'white',
+        border: '2px solid #007acc',
+        borderRadius: '8px',
+        padding: '8px',
+        width: '1000px',
+    });
 
+    input.focus();
 
-
-        input.focus();
-        // Enable vertical expansion if input is a textarea
     if (input.tagName === 'TEXTAREA') {
-    const autoResize = () => {
-        input.style.height = 'auto';
-        input.style.height = input.scrollHeight + 'px';
-    };
+        const autoResize = () => {
+            input.style.height = 'auto';
+            input.style.height = input.scrollHeight + 'px';
+        };
+        input._autoResizeHandler = autoResize;
+        input.addEventListener('input', autoResize);
+        autoResize();
+    }
 
-    input._autoResizeHandler = autoResize; // Save reference for later removal
-    input.addEventListener('input', autoResize);
-    autoResize(); // Trigger once to apply initial height
+    this.summarizeVisibleInputs();
 }
 
-
-    this.summarizeVisibleInputs(); // Trigger summarization when input is focused
-    }
 
 restoreInputPosition() {
     if (this.originalInput && this.placeholderDiv) {
@@ -230,6 +276,19 @@ restoreInputPosition() {
         suggestionDiv.innerText = 'Generating suggestions...';
         document.body.appendChild(suggestionDiv);
         this.aiSuggestionBox = suggestionDiv;
+        setTimeout(() => {
+    if (this.aiSuggestionBox) {
+        this.aiSuggestionBox.classList.remove('show');
+        this.aiSuggestionBox.classList.add('hide');
+        setTimeout(() => {
+            if (this.aiSuggestionBox) {
+                this.aiSuggestionBox.remove();
+                this.aiSuggestionBox = null;
+            }
+        }, 300); // matches CSS transition
+    }
+}, 8000); // hide after 8 seconds
+
         // Trigger fade-in using CSS class
 requestAnimationFrame(() => {
     suggestionDiv.classList.add('show');
